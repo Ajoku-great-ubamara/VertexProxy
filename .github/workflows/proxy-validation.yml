@@ -35,8 +35,8 @@ jobs:
         node -e "
         try {
           process.env.PORT = '8080';
-          process.env.SERVER_MAIN_1 = 'http://localhost:5000';
-          process.env.SERVER_MAIN_2 = 'http://localhost:3000';
+          process.env.SERVER_MAIN_1 = 'https://tracev-backend.onrender.com';
+          process.env.SERVER_MAIN_2 = 'https://tracev-backend.onrender.com';
           require('./proxy.js');
           console.log('✅ Success: No missing variables or reference crashes!');
           process.exit(0);
