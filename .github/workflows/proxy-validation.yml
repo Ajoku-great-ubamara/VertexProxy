@@ -1,0 +1,55 @@
+name: Proxy Pre-Deployment Validation & Deploy
+
+on:
+  push:
+    branches: [ main, master ] # Activates on live pushes
+
+jobs:
+  validate-and-deploy:
+    name: Critical Verification and Live Trigger Loop
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Repository Code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js Environment
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+        cache: 'npm'
+
+    - name: Install Project Dependencies
+      run: |
+        if [ -f package-lock.json ]; then
+          npm ci
+        else
+          npm install
+        fi
+
+    - name: 🔍 Step 1 - Strict JavaScript Syntax Check
+      run: node --check proxy.js
+
+    - name: 🛡️ Step 2 - Structural Runtime Validation
+      run: |
+        node -e "
+        try {
+          process.env.PORT = '8080';
+          process.env.SERVER_MAIN_1 = 'http://localhost:5000';
+          process.env.SERVER_MAIN_2 = 'http://localhost:3000';
+          require('./proxy.js');
+          console.log('✅ Success: No missing variables or reference crashes!');
+          process.exit(0);
+        } catch (err) {
+          console.error('❌ CRITICAL PROXY RUNTIME FAULT DETECTED:');
+          console.error(err.stack);
+          process.exit(1);
+        }
+        "
+
+    # 🚀 STEP 3: Triggers Render only if everything above is green
+    - name: 🚀 Step 3 - Trigger Render Deployment Webhook
+      if: success()
+      run: |
+        echo "🎉 Validation passed! Triggering Render deployment..."
+        curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
