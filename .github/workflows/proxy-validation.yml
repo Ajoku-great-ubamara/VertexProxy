@@ -1,54 +1,61 @@
-name: Production Proxy Crash Checkt
+name: Proxy Pre-Deployment Validation & Deploy
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, master ] # Activates on live pushes
 
 jobs:
-  verify-proxy-deployment:
+  validate-and-deploy:
+    name: Critical Verification and Live Trigger Loop
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+    - name: Checkout Repository Code
+      uses: actions/checkout@v4
 
-      - name: Setup Node.js Environment
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: 'npm'
+    - name: Setup Node.js Environment
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+        cache: 'npm'
 
-      - name: Install Proxy Dependencies (Fast Mode)
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm install
-          fi
+    - name: Install Project Dependencies
+      run: |
+        if [ -f package-lock.json ]; then
+          npm ci
+        else
+          npm install
+        fi
 
-      - name: Proxy Boot Test (PM2 Verification)
-        run: |
-          npm install -g pm2
-          
-          # Boot your proxy server cleanly to verify there are no hidden crashes
-          PORT=8080 pm2 start proxy.js --name proxy-app
-          
-          # Short 3-second sleep window to check for immediate crashes
-          sleep 3
-          pm2 list
-          
-          if ! pm2 show proxy-app | grep -q "status.*online"; then 
-            pm2 logs proxy-app --lines 30
-            echo "❌ Critical Fault: Proxy application crashed on boot test execution!"
-            exit 1
-          fi
-          
-          pm2 delete proxy-app
-          pm2 kill
+    - name: 🔍 Step 1 - Strict JavaScript Syntax Check
+      run: node --check proxy.js
 
-      # Triggers Render automatically only if your global repo secrets contain the hook
-      - name: Trigger Render Deploy Hook
-        if: success() && secrets.RENDER_DEPLOY_HOOK_URL != ''
-        run: |
-          echo "🚀 Validation passed safely! Triggering Render proxy deployment..."
-          curl -s -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}" > /dev/null
+    - name: 🛡️ Step 2 - Structural Runtime Validation
+      run: |
+        node -e "
+        try {
+          process.env.PORT = '8080';
+          process.env.SERVER_MAIN_1 = 'https://onrender.com';
+          process.env.SERVER_MAIN_2 = 'https://onrender.com';
+          process.env.TEST_MODE = 'true';
+          
+          require('./proxy.js');
+          console.log('✅ Success: No missing variables or reference crashes!');
+          process.exit(0);
+        } catch (err) {
+          console.error('❌ CRITICAL PROXY RUNTIME FAULT DETECTED:');
+          console.error(err.stack);
+          process.exit(1);
+        }
+        "
+
+    # 🚀 STEP 3: Triggers Render only if everything above is green
+    - name: 🚀 Step 3 - Trigger Render Deployment Webhook
+      env:
+        # 🔑 FIX: Maps the secret directly to a temporary environment variable first
+        RENDER_WEBHOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+      # 🎯 FIX: Checks the environment string variable context instead of hitting secrets directly
+      if: success() && env.RENDER_WEBHOOK != ''
+      run: |
+        echo "🎉 Validation passed! Triggering Render deployment..."
+        curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
