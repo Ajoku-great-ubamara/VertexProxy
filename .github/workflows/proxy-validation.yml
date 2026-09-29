@@ -1,4 +1,4 @@
-name: Production Proxy Crash Check
+name: Production Proxy Crash Checkt
 
 on:
   push:
